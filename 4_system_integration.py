@@ -40,3 +40,6 @@ def update_arm_position() -> dict[str, float] #type: ignore
     pass
 
 def main_loop() ->  None #type: ignore
+    """
+    main loop that ties everything together
+    """
