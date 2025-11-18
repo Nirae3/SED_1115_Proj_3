@@ -31,7 +31,6 @@ def move_elbow(pin: PIN, angle: float) -> PWM: # type: ignore
     pass
 
 
-
 def set_joint_positions(shoulder_angle: int, elbow_angle: int) -> None #type: ignore
     """
     Moves both shoulder and elbow servos simultaneously to reach target joint positions.
