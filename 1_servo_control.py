@@ -1,14 +1,12 @@
 #############################################################################
 #                    # 1 Servo Control and Kinematics
 """
-
 ----- Objective -----
 Control the three servos
 
 ----- Details -----
 Control the three servos based on input values from shoulder, elbow joints.
 This will involve calculating the angles and ensuring smooth transitions between them.
-
 
 ----- Concepts -----
 Create functions such as move_shoulder(pin, angle), set_joint_positions(shoulder, elbow)
@@ -21,8 +19,11 @@ Hangle servo speed and range limits to avoid mechanical strain
 def move_shoulder(pin: PIN, angle: float) -> PWM: # type: ignore
     """
     Controls the shoulder servo motor by converting an angle into a PWM signal.
+    
     """
-    pass
+    shoulder_servo = PWM(Pin(16))
+    shoulder_servo.freq(50)
+    return
 
 def move_elbow(pin: PIN, angle: float) -> PWM: # type: ignore
     """
