@@ -37,7 +37,7 @@ import time
 servo_shoulder = PWM(Pin(0))
 servo_elbow = PWM(Pin(1))
 
-def calibrate():
+def calibrating():
     X_MIN = print(f"press to record lowest X value")
     X_MAX = print(f"press to record highest X value")
     Y_MIN = print(f"press to record lowest X value")
@@ -58,7 +58,7 @@ btn_min = Pin(14, Pin.IN, Pin.PULL_UP)
 btn_max = Pin(15, Pin.IN, Pin.PULL_UP)
 
 #############################################################
-#                   CALLIBRATION                            #
+#                   CALLIBRATION        main               #
 #############################################################
 def wait_for_press(button):
     while button.value() == 1:
@@ -152,8 +152,8 @@ def get_target_angles() -> tuple[float, float] #type: ignore
 
 
 while True:
-    potX_raw=adc.read()
-    potY_raw=adc.read()
+    potX_raw= potX.read_u16
+    potY_raw=potY.read_u16()
     print(f"Assign minimum/maximum buttons")
     min_button_assign = Pin(1, Pin.IN, Pin.PULL_UP)
     max_button_assign = Pin(2, Pin.IN, Pin.PULL_UP)
