@@ -21,6 +21,7 @@ def move_shoulder(pin: PIN, angle: float) -> PWM: # type: ignore
     Controls the shoulder servo motor by converting an angle into a PWM signal.
     
     """
+    #creating a PWM object to control the servo motor
     shoulder_servo = PWM(Pin(16))
     shoulder_servo.freq(50)
     return
@@ -29,7 +30,10 @@ def move_elbow(pin: PIN, angle: float) -> PWM: # type: ignore
     """
     Controls the elbow servo based on target angle, ensuring safe motion range.
     """
-    pass
+    #creating a PWM object to control the servo motor
+    elbow_servo = PWM(Pin(17))
+    elbow_servo.freq(50)
+    return
 
 
 
