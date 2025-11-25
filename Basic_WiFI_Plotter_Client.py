@@ -165,4 +165,5 @@ ani = FuncAnimation(fig, update, interval=50, blit=False)
 # Immediately reset plot at start
 reset_plot()
 
+print("IM THE OLD ONE")
 plt.show()

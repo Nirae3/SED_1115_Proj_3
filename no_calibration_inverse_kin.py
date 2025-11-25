@@ -14,15 +14,17 @@ ANGLE_OFFSET = -3 #other angles to test calibration: -10, +5, +12
 #setting PWM value for the servos
 shoulder = PWM(Pin(0), freq=50)
 elbow = PWM(Pin(1), freq=50)
-wrist = PWM(Pin(2), freq=50)
+wrist = PWM(Pin(2), freq=50) 
 
 # arm lengths
-len_shol_elbow = 20.0
-len_elbow_wrist = 20.0
-len_wrist_end = 5.0
+len_shol_elbow = 17.0
+len_elbow_wrist = 14.0
+
+current_shoulder_angle = 90
+current_elbow_angle = 90
 
 # paper limits
-X_MIN, X_MAX = -20.0, 20.0
+X_MIN, X_MAX = 0, 20.0
 Y_MIN, Y_MAX = 0.0, 25.0
 
 
@@ -107,7 +109,7 @@ def inverse_kinematics (x, y):
     B = elbow -> we calccualte this
     """
 
-    Ax, Ay = 0.0, 0.0
+    Ax, Ay = 3.0, 3.0
     Cx, Cy = x, y
 
     AC = math.sqrt((Ax - Cx)**2 + (Ay - Cy)**2) # distance from shoulder to terget
@@ -146,18 +148,48 @@ def inverse_kinematics (x, y):
 
     servoA = alpha_deg - 75 
     servoB = 150 - beta_deg
-    servoC = 90
 
     servoA = max(0, min(180, servoA)) # keep within t he range
     servoB = max(0, min(180, servoB))
-    servoC = max(0, min(180, servoC))
 
-    return(servoA, servoB, servoC)
 
-def move_to(shoulder_angle, elbow_angle, wrist_angle):
-    shoulder.duty_u16(translate(shoulder_angle))
-    elbow.duty_u16(translate(elbow_angle))
-    wrist.duty_u16(translate(wrist_angle))
+    return(servoA, servoB)
+
+def move_to(target_shoulder, target_elbow, step_delay=0.01):
+    # read current position (we need to track them globally)
+    global current_shoulder_angle, current_elbow_angle
+
+    # move shoulder
+    if current_shoulder_angle < target_shoulder:
+        shoulder_range = range(
+            int(current_shoulder_angle), int(target_shoulder) + 1
+        )
+    else:
+        shoulder_range = range(
+            int(current_shoulder_angle), int(target_shoulder) - 1, -1
+        )
+
+    # move elbow
+    if current_elbow_angle < target_elbow:
+        elbow_range = range(
+            int(current_elbow_angle), int(target_elbow) + 1
+        )
+    else:
+        elbow_range = range(
+            int(current_elbow_angle), int(target_elbow) - 1, -1
+        )
+
+    # STEP THROUGH BOTH ANGLES TOGETHER
+    for s, e in zip(shoulder_range, elbow_range):
+        shoulder.duty_u16(translate(s))
+        elbow.duty_u16(translate(e))
+        time.sleep(step_delay)
+
+    # save new positions
+    current_shoulder_angle = target_shoulder
+    current_elbow_angle = target_elbow
+
+
 
 
 #setting functions to control the movement of the pen servo
@@ -173,7 +205,7 @@ def wrist_down():
 def main():
     print("hi")
 
-    move_to(90,90,90)
+    #move_to(180,0)
 
     while True:
         pot_x_value = read_pot(pot_x)
@@ -185,9 +217,9 @@ def main():
         angles = inverse_kinematics(target_x, target_y)
 
         if angles:
-            shoulder, elbow, wrist = angles
-            print(f"Target: ({target_x}, {target_y}) - > Angles: Shoulder = {shoulder} deg, Elbow = {elbow} deg, Wrist: {wrist}")
-            move_to(shoulder, elbow, wrist)
+            shoulder, elbow = angles
+            print(f"Target: ({target_x}, {target_y}) - > Angles: Shoulder = {shoulder} deg, Elbow = {elbow} deg")
+            move_to(shoulder, elbow)
         else: 
             print(f"target ({target_x}, {target_y} is unreachable)")
 
