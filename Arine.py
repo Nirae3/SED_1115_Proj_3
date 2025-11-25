@@ -17,8 +17,8 @@ elbow = PWM(Pin(1), freq=50)
 wrist = PWM(Pin(2), freq=50)
 
 # arm lengths
-len_shol_elbow = 10.0
-len_elbow_wrist = 10.0
+len_shol_elbow = 20.0
+len_elbow_wrist = 20.0
 len_wrist_end = 5.0
 
 # paper limits
@@ -60,8 +60,8 @@ def map_pot_to_coordinate (pot_value, min_value, max_value): # map potentiometer
     return min_value + (pot_value / 65535.0) * (max_value - min_value)
 # pot_value/65535 = converts to 0-1 range
 # max_val - min_val = total range of the paper
-# (pot_value/65535) *   max_val-min_val = how far into the range
-# min_value + (pot_value / 65535.0) * (max_value - min_value) = final coordinate 
+# (pot_value/65535) *   max_val-min_val = find the pot value in the given range
+# min_value + (pot_value / 65535.0) * (max_value - min_value) = final coordinate accounting for min != 0
 
 
 # You should not modify the signature (name, input, return type) of this function
@@ -191,7 +191,7 @@ def main():
         else: 
             print(f"target ({target_x}, {target_y} is unreachable)")
 
-        time.sleep(0.05)
+        time.sleep(1)
 
 if __name__ == "__main__":
     main()
