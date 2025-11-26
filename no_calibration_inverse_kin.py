@@ -8,7 +8,6 @@ pwm.duty_u16(32768)
 pot_x = ADC(Pin(26))
 pot_y = ADC(Pin(27))
 
-
 ANGLE_OFFSET = -3 #other angles to test calibration: -10, +5, +12
 
 #setting PWM value for the servos
@@ -16,41 +15,20 @@ shoulder = PWM(Pin(0), freq=50)
 elbow = PWM(Pin(1), freq=50)
 wrist = PWM(Pin(2), freq=50) 
 
-# arm lengths
-len_shol_elbow = 17.0
-len_elbow_wrist = 14.0
+# arm lengths (measured in cm)
+len_shol_elbow = 17.0  # La
+len_elbow_wrist = 14.0  # Lb
 
+# Current servo angles
 current_shoulder_angle = 90
 current_elbow_angle = 90
 
 # paper limits
-X_MIN, X_MAX = 0, 20.0
-Y_MIN, Y_MAX = 0.0, 25.0
+X_MIN, X_MAX = 0, 29.0
+Y_MIN, Y_MAX = 0.0, 21.0
 
 
-"""def calibration():
-    print("=== ENTERING CALIBRATION MODE ===")
-    print ("this will move the arm to test positions")
-    print("measure the X and Y coordinates where the pen is")
-    print("use a ruler from the choulder to the pen tip")
-    test_positions = [
-        (45, 90, 90, "LEFTMOST - Maximum left reach"),
-        (135, 90, 90, "RIGHTMOST - Maximum right reach"),
-        (90, 45, 90, "CLOSEST - Nearest to shoulder"),
-        (90, 135, 90, "FARTHEST - Maximum forward reach"),
-        (90, 90, 90, "CENTER - Middle position"),
-    ]
-
-    
-    for i, (s,e) in enumerate(test_positions):
-        print (f"\n Test {i+1}: Shoulder = {s}, Elbow = {e}")
-        move_to(s,e)
-        input("Move arm to this position. Measure X and Y. Press Enter...")
-    
-    measuremets=[]"""
-
-
-def read_pot(adc):   # getting rid of noize by reading the pot values of the average of the samples
+def read_pot(adc):   # getting rid of noise by reading the pot values of the average of the samples
     sample = 5
     total = 0
     for i in range(sample):
@@ -58,22 +36,17 @@ def read_pot(adc):   # getting rid of noize by reading the pot values of the ave
         time.sleep_ms(1)
     return total // sample
 
-def map_pot_to_coordinate (pot_value, min_value, max_value): # map potentiometer 0-65535 to coordinate range
+
+def map_pot_to_coordinate(pot_value, min_value, max_value): # map potentiometer 0-65535 to coordinate range
     return min_value + (pot_value / 65535.0) * (max_value - min_value)
-# pot_value/65535 = converts to 0-1 range
-# max_val - min_val = total range of the paper
-# (pot_value/65535) *   max_val-min_val = find the pot value in the given range
-# min_value + (pot_value / 65535.0) * (max_value - min_value) = final coordinate accounting for min != 0
 
 
-# You should not modify the signature (name, input, return type) of this function
 def translate(angle: float) -> int:
     """
     Converts an angle in degrees to the corresponding input
     for the duty_u16 method of the servo class.
     This prevents sending unsafe PWM values to the servo.
     """
-
     #apply the offset to the input angle
     adjusted_angle = angle + ANGLE_OFFSET
 
@@ -96,134 +69,130 @@ def translate(angle: float) -> int:
     #convert the duty cycle (0.0–1.0) into a 16-bit value for duty_u16
     duty_cycle_value = int(duty_cycle * 65535)
 
-    # print("angle =", angle, "adjusted_angle =", adjusted_angle, "\n duty_cycle_value =", duty_cycle_value)
-
     return duty_cycle_value
 
 
-
-def inverse_kinematics (x, y):
+def inverse_kinematics(x, y):
     """
-    A = shouder at origin 0,0 or at (Ax, Ay)
-    C = target (x,y) => (Cx, Cy)
-    B = elbow -> we calccualte this
+    A = shoulder (at origin or offset position)
+    B = elbow
+    C = target position
     """
+    
+    Ax, Ay = 0.0, 0.0 # shoulder position, may need to change
+    Cx, Cy = x, y # target position
+    
+    La = len_shol_elbow
+    Lb = len_elbow_wrist
 
-    Ax, Ay = 3.0, 3.0
-    Cx, Cy = x, y
+    max_reach = La + Lb
+    min_reach = abs(La - Lb)
 
-    AC = math.sqrt((Ax - Cx)**2 + (Ay - Cy)**2) # distance from shoulder to terget
-
-    max_reach = len_shol_elbow + len_elbow_wrist
-    min_reach = abs(len_shol_elbow - len_elbow_wrist)
-
-    if AC > max_reach or AC < min_reach:
-        print(f"Target is unrecable: AC = {AC}, valid range is[{min_reach}, {max_reach}]")
+    theta_S_offset = math.radians(150)  # adjust Shoulder servo mounding and convert to radians
+    theta_E_offset = math.radians(30)  # adjust elbow servo mounting and convert to raidans
+    
+    angle_AC = math.atan2(Cy, Cx)  # angle from horizontal x axis
+    AC = math.sqrt(Cy**2 + Cx**2) # distance from shoulder to target
+    
+    if AC > max_reach or AC < min_reach: # check if can reach the target
+        print(f"Target unreachable: AC={AC:.2f}, valid range=[{min_reach:.2f}, {max_reach:.2f}]")
         return None
     
-    Abase_c = math.sqrt((Ax-Cx)**2 + Cy**2) # base distance
-    cos_BAC = (len_shol_elbow**2 + AC**2 - len_elbow_wrist**2)/ (2* len_shol_elbow * AC)
-    cos_BAC = max(-1.0, min(1.0, cos_BAC)) # put im a valid range
-    angle_BAC = math.acos(cos_BAC) # converting to radians
+    cos_BAC = (La**2 + AC**2 - Lb**2) / (2 * La * AC)  # shoulder angle
+    cos_BAC = max(-1.0, min(1.0, cos_BAC))  # keep in the range between [-1, 1]
+    angle_BAC = math.acos(cos_BAC)  # convert to radians
 
-    sin_ACB = (len_shol_elbow * math.sin(angle_BAC)) / len_elbow_wrist
-    sin_ACB = max(-1, min(1.0, sin_ACB)) # put in a valid range
-    angle_ACB = math.asin(sin_ACB) # converting to radians
+    cos_ABC = (La**2 + Lb**2 - AC**2) / (2 * La * Lb)  # shoulder angle
+    cos_ABC = max(-1.0, min(1.0, cos_ABC))  # keep in the range between [-1, 1]
+    angle_ABC = math.acos(cos_ABC)  # convert to radians
 
-    if Ay == 0:
-        angle_YAC = math.atan2(Cx, Cy)
-    else: 
-        cos_YAC = (Ay**2 + AC**2 - Abase_c**2) / (2*Ay * AC)
-        cos_YAC = max(-1.0, min(1.0, cos_YAC))
-        angle_YAC = math.acos(cos_YAC)
-
-    alpha = angle_BAC + angle_YAC # shoulder angle in kinematic chain
-    beta = angle_BAC + angle_ACB # elbow angle in kinematic chain
-
-    alpha_deg = math.degrees(alpha) # convert to degrees
-    beta_deg = math.degrees(beta) # convert to degrees
- 
-# convert to servo angles with mounting offsets
-# may need to be adjusted using experementation
-
-    servoA = alpha_deg - 75 
-    servoB = 150 - beta_deg
-
-    servoA = max(0, min(180, servoA)) # keep within t he range
-    servoB = max(0, min(180, servoB))
+    theta_AB = angle_AC - angle_BAC # shoulder angle from horizontal line to the shoulder
+    
+    theta_S = theta_S_offset + theta_AB # final shoulder angle including the offset
+    theta_S_deg = math.degrees(theta_S) # convert to degrees
+    theta_S_deg = max(0, min(180, theta_S_deg)) # put in the range between [0, 180]
 
 
-    return(servoA, servoB)
+    theta_E = angle_ABC - theta_E_offset # final elbow angle including offset
+    theta_E_deg = math.degrees(theta_E) # convert to degrees
+    theta_E_deg = max(0, min(180, theta_E_deg)) # keep the range in between [0, 180]
+    
+    return (theta_S_deg, theta_E_deg)
 
-def move_to(target_shoulder, target_elbow, step_delay=0.01):
-    # read current position (we need to track them globally)
+def move_to(target_shoulder, targt_elbow):
     global current_shoulder_angle, current_elbow_angle
-
-    # move shoulder
+ 
     if current_shoulder_angle < target_shoulder:
-        shoulder_range = range(
-            int(current_shoulder_angle), int(target_shoulder) + 1
-        )
+        shoulder_range = range(int(current_shoulder_angle), int(target_shoulder) +1)
     else:
-        shoulder_range = range(
-            int(current_shoulder_angle), int(target_shoulder) - 1, -1
-        )
+        shoulder_range = range(int(current_shoulder_angle), int(target_shoulder), -1)
 
-    # move elbow
-    if current_elbow_angle < target_elbow:
-        elbow_range = range(
-            int(current_elbow_angle), int(target_elbow) + 1
-        )
+    if current_elbow_angle < targt_elbow:
+        elbow_range = range(int(current_elbow_angle), int(targt_elbow) + 1)
     else:
-        elbow_range = range(
-            int(current_elbow_angle), int(target_elbow) - 1, -1
-        )
+        elbow_range = range(int(current_elbow_angle), int(targt_elbow), -1)
 
-    # STEP THROUGH BOTH ANGLES TOGETHER
-    for s, e in zip(shoulder_range, elbow_range):
+    for s in shoulder_range:
         shoulder.duty_u16(translate(s))
+        time.sleep(0.01)
+    
+    for e in elbow_range:
         elbow.duty_u16(translate(e))
-        time.sleep(step_delay)
+        time.sleep(0.01)
 
-    # save new positions
     current_shoulder_angle = target_shoulder
-    current_elbow_angle = target_elbow
+    current_elbow_angle = targt_elbow
 
 
-
-
-#setting functions to control the movement of the pen servo
 def wrist_up():
-    wrist.duty_u16(translate(0)) #the angle at which the servo has the pen up
-    time.sleep(0.5)
-def wrist_down():
-    wrist.duty_u16(translate(30)) #the angle at which the servo has the pen down
+    """Lift pen off paper"""
+    wrist.duty_u16(translate(0))
     time.sleep(0.5)
 
+
+def wrist_down():
+    """Lower pen to paper"""
+    wrist.duty_u16(translate(30))
+    time.sleep(0.5)
 
 
 def main():
-    print("hi")
-
-    #move_to(180,0)
+    print("Etch-A-Sketch Starting...")
+    print(f"Workspace: X({X_MIN}, {X_MAX}), Y({Y_MIN}, {Y_MAX})")
+    
+    # Start at home position
+    
+    #move_to(current_shoulder_angle, current_elbow_angle)
+    print("after move function was fired")
+    time.sleep(1)
 
     while True:
+        # Read potentiometer values
         pot_x_value = read_pot(pot_x)
         pot_y_value = read_pot(pot_y)
+    
 
-        target_x = map_pot_to_coordinate (pot_x_value, X_MIN, X_MAX)
-        target_y = map_pot_to_coordinate (pot_y_value, Y_MIN, Y_MAX)
+        # Map to coordinate space
+        target_x = map_pot_to_coordinate(pot_x_value, X_MIN, X_MAX)
+        target_y = map_pot_to_coordinate(pot_y_value, Y_MIN, Y_MAX)
+        
 
+        move_to(0,0)
+
+        # Calculate inverse kinematics
         angles = inverse_kinematics(target_x, target_y)
 
         if angles:
-            shoulder, elbow = angles
-            print(f"Target: ({target_x}, {target_y}) - > Angles: Shoulder = {shoulder} deg, Elbow = {elbow} deg")
-            move_to(shoulder, elbow)
-        else: 
-            print(f"target ({target_x}, {target_y} is unreachable)")
+            shoulder_ang, elbow_ang = angles
+            print(f"Target: ({target_x:.1f}, {target_y:.1f}):::  Shoulder={shoulder_ang:.1f} deg, Elbow={elbow_ang:.1f} deg")
+            move_to(shoulder_ang, elbow_ang)
+            
 
-        time.sleep(1)
+        else: 
+            print(f"Target ({target_x:.1f}, {target_y:.1f}) is unreachable")
+
+        time.sleep(0.5)  # 20Hz update rate
+
 
 if __name__ == "__main__":
     main()
