@@ -8,7 +8,7 @@ pwm.duty_u16(32768)
 pot_x = ADC(Pin(26))
 pot_y = ADC(Pin(27))
 
-ANGLE_OFFSET = -3 #other angles to test calibration: -10, +5, +12
+ANGLE_OFFSET = -3 # create calibration table lookup to figure out the offset
 
 #setting PWM value for the servos
 shoulder = PWM(Pin(0), freq=50)
@@ -29,7 +29,7 @@ Y_MIN, Y_MAX = 0.0, 21.0
 
 
 def read_pot(adc):   # getting rid of noise by reading the pot values of the average of the samples
-    sample = 5
+    sample = 30
     total = 0
     for i in range(sample):
         total += adc.read_u16()
@@ -132,11 +132,8 @@ def move_to(target_shoulder, targt_elbow):
     else:
         elbow_range = range(int(current_elbow_angle), int(targt_elbow), -1)
 
-    for s in shoulder_range:
+    for s,e in zip(shoulder_range, elbow_range):
         shoulder.duty_u16(translate(s))
-        time.sleep(0.01)
-    
-    for e in elbow_range:
         elbow.duty_u16(translate(e))
         time.sleep(0.01)
 
@@ -166,19 +163,18 @@ def main():
     print("after move function was fired")
     time.sleep(1)
 
+    move_to(0,0)
+    print("I have moved to point 0.0")
     while True:
         # Read potentiometer values
-        pot_x_value = read_pot(pot_x)
-        pot_y_value = read_pot(pot_y)
+        pot_x_value = read_pot(pot_x) # pot shoulder in PWM singal 
+        pot_y_value = read_pot(pot_y) # pot elbow in PWM singal
     
 
         # Map to coordinate space
-        target_x = map_pot_to_coordinate(pot_x_value, X_MIN, X_MAX)
-        target_y = map_pot_to_coordinate(pot_y_value, Y_MIN, Y_MAX)
-        
-
-        move_to(0,0)
-
+        target_x = map_pot_to_coordinate(pot_x_value, X_MIN, X_MAX) # gives on paper how much is 65000 X axis
+        target_y = map_pot_to_coordinate(pot_y_value, Y_MIN, Y_MAX)# gives on paper how much is 65000 Y axis
+    
         # Calculate inverse kinematics
         angles = inverse_kinematics(target_x, target_y)
 
