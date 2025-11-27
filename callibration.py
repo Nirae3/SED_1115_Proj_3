@@ -1,12 +1,17 @@
 #libraries that enable communication with the pico and also manipulate time
-from machine import Pin, PWM, ADC
+from machine import Pin, PWM, ADC, I2C
 import time, math
+from ads1x15 import ADS1015
+
+i2c = I2C(1, sda = Pin(14), scl = Pin(15))
+
 
 #setting a PWM signal and assigning it a frequency
 pwm = PWM(Pin(0), freq=50, duty_u16=8192)
 pwm.duty_u16(32768)
 pot_x = ADC(Pin(26))
 pot_y = ADC(Pin(27))
+external_ADC = ADS1015(i2c, 0x48, 1 )
 
 ANGLE_OFFSET = -3 # create calibration table lookup to figure out the offset
 
@@ -20,8 +25,8 @@ len_shol_elbow = 17.0  # La
 len_elbow_wrist = 14.0  # Lb
 
 # Current servo angles
-current_shoulder_angle = shoulder.read()
-current_elbow_angle = elbow.read()
+current_shoulder_angle = 90
+current_elbow_angle = 90
 
 # paper limits
 X_MIN, X_MAX = 0, 29.0
@@ -88,8 +93,8 @@ def inverse_kinematics(x, y):
     max_reach = La + Lb
     min_reach = abs(La - Lb)
 
-    theta_S_offset = math.radians(45)  # adjust Shoulder servo mounding and convert to radians
-    theta_E_offset = math.radians(20)  # adjust elbow servo mounting and convert to raidans
+    theta_S_offset = math.radians(150)  # adjust Shoulder servo mounding and convert to radians
+    theta_E_offset = math.radians(30)  # adjust elbow servo mounting and convert to raidans
     
     angle_AC = math.atan2(Cy, Cx)  # angle from horizontal x axis
     AC = math.sqrt(Cy**2 + Cx**2) # distance from shoulder to target
@@ -175,12 +180,14 @@ def main():
             shoulder_ang, elbow_ang = angles
             print(f"Target: ({target_x:.1f}, {target_y:.1f}):::  Shoulder={shoulder_ang:.1f} deg, Elbow={elbow_ang:.1f} deg")
             move_to(shoulder_ang, elbow_ang)
+            raw_value =external_ADC.read(4, 1)
+            print(raw_value)
             
 
         else: 
             print(f"Target ({target_x:.1f}, {target_y:.1f}) is unreachable")
 
-        #time.sleep(0.05)  # 20Hz update rate
+        #time.sleep(0.1)  # 20Hz update rate
 
 
 if __name__ == "__main__":
