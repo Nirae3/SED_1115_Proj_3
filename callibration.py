@@ -192,8 +192,8 @@ def main():
         #target_x = map_pot_to_coordinate(pot_x_value, X_MIN, X_MAX) # gives on paper how much is 65000 X axis
         #target_y = map_pot_to_coordinate(pot_y_value, Y_MIN, Y_MAX)# gives on paper how much is 65000 Y axis
     
-        target_x = map_clamped(pot_x_value , X_ADC_MIN, X_ADC_MAX, X_MIN, X_MAX)
-        target_y = map_clamped(pot_y_value, Y_ADC_MIN, Y_ADC_MAX, Y_MIN, Y_MAX)
+        target_x = map_clamped(pot_x_value , X_MIN, X_MAX, X_MIN, X_MAX)
+        target_y = map_clamped(pot_y_value, Y_MIN, Y_MAX, Y_MIN, Y_MAX)
         # Calculate inverse kinematics
         angles = inverse_kinematics(target_x, target_y)
 
