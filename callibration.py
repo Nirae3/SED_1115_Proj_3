@@ -18,7 +18,7 @@ pot_x = ADC(Pin(27))
 pot_y = ADC(Pin(26))
 external_ADC = ADS1015(i2c, 0x48, 1 )
 
-ANGLE_OFFSET = -3 # create calibration table lookup to figure out the offset
+ANGLE_OFFSET = 5 # create calibration table lookup to figure out the offset
 
 #setting PWM value for the servos
 shoulder = PWM(Pin(0), freq=50)
@@ -35,11 +35,7 @@ current_elbow_angle = 90
 
 # paper limits
 X_MIN, X_MAX = 0.0, 29.0
-Y_MIN, Y_MAX = 0.0, 21.0
-
-
-X_ADC_MIN, X_ADC_MAX = 399, 1444
-Y_ADC_MIN, Y_ADC_MAX = 650, 1342
+Y_MIN, Y_MAX = -15.5, 15.5
 
 
 def read_pot(adc):   # getting rid of noise by reading the pot values of the average of the samples
@@ -143,12 +139,10 @@ def inverse_kinematics(x, y):
     return (theta_S_deg, theta_E_deg)
 
 def move_to(target_shoulder, targt_elbow):
-    
     shoulder.duty_u16(translate(target_shoulder))
     elbow.duty_u16(translate(targt_elbow))
-    time.sleep(0.05)
-"""    
-global current_shoulder_angle, current_elbow_angle
+    time.sleep(0.01)
+    """global current_shoulder_angle, current_elbow_angle
  
     if current_shoulder_angle < target_shoulder:
         shoulder_range = range(int(current_shoulder_angle), int(target_shoulder) +1)
@@ -163,13 +157,10 @@ global current_shoulder_angle, current_elbow_angle
     for s,e in zip(shoulder_range, elbow_range):
         shoulder.duty_u16(translate(s))
         elbow.duty_u16(translate(e))
-        #time.sleep(0.01)
-        # current_shoulder_angle = target_shoulder
-    current_elbow_angle = targt_elbow
-    """
+        time.sleep(0.01)
 
-
-    
+    current_shoulder_angle = target_shoulder
+    current_elbow_angle = targt_elbow"""
 
 
 def wrist_up():
@@ -230,6 +221,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
