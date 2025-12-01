@@ -68,24 +68,18 @@ def move_to(x, y):
     elbow.duty_u16(translate(elbow_angle))
     time.sleep(0.05)
 
+#Using the button to control the wrist
+button_sw5 = Pin(15, Pin.IN, Pin.PULL_DOWN)
 # Main loop
 while True:
     if button_sw5.value() == 1:
         # Move to pick position
         wrist_up()
-        move_shoulder(90)
-        move_elbow(90)
-        wrist_down()
         time.sleep(1)
         # Move to place position
         wrist_up()
-        move_shoulder(0)
-        move_elbow(0)
-        wrist_down()
         time.sleep(1)
         # Return to home position
         wrist_up()
-        move_shoulder(0)
-        move_elbow(0)
         time.sleep(1)
     time.sleep(0.1)
