@@ -68,36 +68,24 @@ def move_to(x, y):
     elbow.duty_u16(translate(elbow_angle))
     time.sleep(0.05)
 
-#opens the circle.gcode file
-def run_gcode(filename):
-    with open(filename) as file:
-        for line in file:
-            line = line.strip()
-            if line == "" or line.startswith(";"):
-                continue
-
-            #controling wrist movement based on information in file
-            if line.startswith("M3"):
-                wrist_down()
-                continue
-            if line.startswith("M5"):
-                wrist_up()
-                continue
-
-            #skips the letters and moves to the numbers to get the degrees
-            if line.startswith("G1"):
-                x = None
-                y = None
-                for part in line.split():
-                    if part.startswith("S"):
-                        x = float(part[1:])
-                    elif part.startswith("E"):
-                        y = float(part[1:])
-                if x is not None and y is not None:
-                    move_to(x, y)
-    print("Finished drawing!")
-
-wrist_up()
-time.sleep(1)
-
-run_gcode("circle.gcode") # type: ignore
+# Main loop
+while True:
+    if button_sw5.value() == 1:
+        # Move to pick position
+        wrist_up()
+        move_shoulder(90)
+        move_elbow(90)
+        wrist_down()
+        time.sleep(1)
+        # Move to place position
+        wrist_up()
+        move_shoulder(0)
+        move_elbow(0)
+        wrist_down()
+        time.sleep(1)
+        # Return to home position
+        wrist_up()
+        move_shoulder(0)
+        move_elbow(0)
+        time.sleep(1)
+    time.sleep(0.1)
