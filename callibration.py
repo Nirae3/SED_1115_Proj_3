@@ -5,13 +5,12 @@ from ads1x15 import ADS1015
 
 i2c = I2C(1, sda = Pin(14), scl = Pin(15))
 
-
 #setting a PWM signal and assigning it a frequency
 pwm = PWM(Pin(0), freq=50, duty_u16=8192)
 pwm.duty_u16(32768)
 pot_x = ADC(Pin(26))
 pot_y = ADC(Pin(27))
-external_ADC = ADS1015(i2c, 0x48, 1 )
+external_ADC = ADS1015(i2c, 0x48, 1)
 
 ANGLE_OFFSET = -5 # create calibration table lookup to figure out the offset
 
@@ -20,21 +19,21 @@ shoulder = PWM(Pin(0), freq=50)
 elbow = PWM(Pin(1), freq=50)
 wrist = PWM(Pin(2), freq=50) 
 
-# arm lengths (measured in cm)
+#arm lengths (measured in cm)
 len_shol_elbow = 17.0  # La
-len_elbow_wrist = 14.0  # Lb
+len_elbow_wrist = 18.0  # Lb
 
-# Current servo angles
+#current servo angles
 current_shoulder_angle = 90
 current_elbow_angle = 90
 
-# paper limits
-X_MIN, X_MAX = 3.0, 27.0
+#paper limits
+X_MIN, X_MAX = 6.8, 28.0
 Y_MIN, Y_MAX = -15.5, 15.0
 
 
-def read_pot(adc):   # getting rid of noise by reading the pot values of the average of the samples
-    sample = 1
+def read_pot(adc):   #getting rid of noise by reading the pot values of the average of the samples
+    sample = 10
     total = 0
     for i in range(sample):
         total += adc.read_u16()
@@ -94,7 +93,7 @@ def inverse_kinematics(x, y):
     min_reach = abs(La - Lb)
 
     theta_S_offset = math.radians(150)  # adjust Shoulder servo mounding and convert to radians
-    theta_E_offset = math.radians(30)  # adjust elbow servo mounting and convert to raidans
+    theta_E_offset = math.radians(20)  # adjust elbow servo mounting and convert to radians
     
     angle_AC = math.atan2(Cy, Cx)  # angle from horizontal x axis
     AC = math.sqrt(Cy**2 + Cx**2) # distance from shoulder to target
@@ -115,43 +114,72 @@ def inverse_kinematics(x, y):
     
     theta_S = theta_S_offset + theta_AB # final shoulder angle including the offset
     theta_S_deg = math.degrees(theta_S) # convert to degrees
-    theta_S_deg = max(0, min(180, theta_S_deg)) # put in the range between [0, 180]
+    # theta_S_deg = max(0, min(180, theta_S_deg)) # put in the range between [0, 180]
 
 
     theta_E = angle_ABC - theta_E_offset # final elbow angle including offset
     theta_E_deg = math.degrees(theta_E) # convert to degrees
-    theta_E_deg = max(0, min(180, theta_E_deg)) # keep the range in between [0, 180]
+    # theta_E_deg = max(0, min(180, theta_E_deg)) # keep the range in between [0, 180]
     
     return (theta_S_deg, theta_E_deg)
 
 def move_to(target_x, target_y):
-    angles = inverse_kinematics(target_x, target_y)
+    try:
+        angles = inverse_kinematics(target_x, target_y)
 
-    if angles is None:
-        print(f"Target ({target_x:.1f}, {target_y:.1f}) is unreachable")
-        return False
+        if angles is None:
+            print(f"Target ({target_x:.1f}, {target_y:.1f}) is unreachable")
+            return False
 
-    shoulder_ang, elbow_ang = angles
+        shoulder_ang, elbow_ang = angles
 
-    shoulder.duty_u16(translate(shoulder_ang))
-    elbow.duty_u16(translate(elbow_ang))
+        shoulder.duty_u16(translate(shoulder_ang))
+        elbow.duty_u16(translate(elbow_ang))
 
-    print(f"SHOULDER ANGLE: {elbow_ang}, ELBOW ANGLE: {elbow_ang}")
+        print(f"SHOULDER ANGLE: {elbow_ang}, ELBOW ANGLE: {elbow_ang}")
 
-    time.sleep(0.5)
-    return True
+        time.sleep(0.02)
+        return True
+    except:
+        print("Out of bounds, stay within paper limits")
 
+#WRIST MOVEMENT
 def wrist_up():
     """Lift pen off paper"""
     wrist.duty_u16(translate(0))
     time.sleep(0.5)
-
 
 def wrist_down():
     """Lower pen to paper"""
     wrist.duty_u16(translate(30))
     time.sleep(0.5)
 
+#servo setup
+servo = PWM(Pin(18))
+servo.freq(50)
+
+#converts angle to duty cycle value
+def set_angle(angle):
+    #for typical servo: duty between 1000–9000
+    duty = int((angle / 180) * 8000) + 1000
+    servo.duty_u16(duty)
+
+#button setup
+button = Pin(22, Pin.IN, Pin.PULL_DOWN)
+pen_down = False
+
+def check_pen_toggle():
+    global pen_down
+
+    if button.value() == 1: #button pressed
+        if pen_down:
+            wrist_up()
+            pen_down = False
+        else:
+            wrist_down()
+            pen_down = True
+
+        time.sleep(0.4)
 
 def main():
     print("Etch-A-Sketch Starting...")
@@ -160,23 +188,28 @@ def main():
     time.sleep(1)
 
     while True:
-        # Read potentiometer values
+
+        #checking for pen up/down button press
+        check_pen_toggle()
+
+        #reads potentiometer values
         pot_x_value = read_pot(pot_x)
         pot_y_value = read_pot(pot_y)
 
-        # Map to coordinate space
+        #maps to coordinate space
         target_x = map_pot_to_coordinate(pot_x_value, X_MIN, X_MAX)
         target_y = map_pot_to_coordinate(pot_y_value, Y_MIN, Y_MAX)
 
         print(f"Target: ({target_x:.1f}, {target_y:.1f})")
 
-        # Let move_to handle IK + motion
+        #Let move_to handle IK + motion
         success = move_to(target_x, target_y)
 
         if success:
             raw_value = external_ADC.read(4, 1)
             print(raw_value)
-
+        else:
+            print("Values are offbound")
 
 if __name__ == "__main__":
     main()
