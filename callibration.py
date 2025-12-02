@@ -34,21 +34,11 @@ current_elbow_angle = 90
 X_MIN, X_MAX = 6.8, 28.0
 Y_MIN, Y_MAX = -15.5, 15.0
 
-# CALIBRATION VALUES - UPDATE THESE AFTER RUNNING CALIBRATION
-SHOULDER_RAW_MIN =  1463  # Raw ADC reading when shoulder is at 0 degrees
-SHOULDER_RAW_MAX = 223 # Raw ADC reading when shoulder is at 180 degrees
+SHOULDER_RAW_MIN =  223  # Raw ADC reading when shoulder is at 0 degrees
+SHOULDER_RAW_MAX = 1463 # Raw ADC reading when shoulder is at 180 degrees
 
-# Elbow Feedback (B) Calibration
-ELBOW_RAW_MIN = 1321     # Raw ADC reading when elbow is at 0 degrees
-ELBOW_RAW_MAX = 477    # Raw ADC reading when elbow is at 180 degrees
-
-# CALIBRATION VALUES - UPDATE THESE AFTER RUNNING CALIBRATION
-SHOULDER_RAW_MIN =  1463  # Raw ADC reading when shoulder is at 0 degrees
-SHOULDER_RAW_MAX = 223 # Raw ADC reading when shoulder is at 180 degrees
-
-# Elbow Feedback (B) Calibration
-ELBOW_RAW_MIN = 1321     # Raw ADC reading when elbow is at 0 degrees
-ELBOW_RAW_MAX = 477    # Raw ADC reading when elbow is at 180 degrees
+ELBOW_RAW_MIN = 477     # Raw ADC reading when elbow is at 0 degrees
+ELBOW_RAW_MAX = 1321    # Raw ADC reading when elbow is at 180 degrees
 
 
 def read_pot(adc):   #getting rid of noise by reading the pot values of the average of the samples
@@ -70,6 +60,7 @@ def translate(angle: float) -> int:
     for the duty_u16 method of the servo class.
     This prevents sending unsafe PWM values to the servo.
     """
+    
     #apply the offset to the input angle
     adjusted_angle = angle + ANGLE_OFFSET
 
@@ -180,8 +171,7 @@ def map_adc_to_angle(raw_value: int, raw_min: int, raw_max: int) -> float:
     into a corresponding angle in degrees (0 to 180).
     """
     clamped_value = max(raw_min, min(raw_max, raw_value))
-    raw_span = raw_max - raw_min
-    normalized_pos = (clamped_value - raw_min) / raw_span
+    normalized_pos = (clamped_value - raw_min) / (raw_max - raw_min)
     angle = normalized_pos * 180.0
 
     return angle
