@@ -7,14 +7,10 @@ i2c = I2C(1, sda = Pin(14), scl = Pin(15))
 
 
 #setting a PWM signal and assigning it a frequency
+
 pot_x = ADC(Pin(26))
 pot_y = ADC(Pin(27))
 external_ADC = ADS1015(i2c, 0x48, 1 )
-
-ADS1015_ADDR = 0x48
-ADS1015_PWM = 2     # port 2 has (low-pass filtered) PWM signal
-ADS1015_A_FB = 0
-ADS1015_B_FB = 1
 
 ANGLE_OFFSET = -5 # create calibration table lookup to figure out the offset
 
@@ -32,16 +28,8 @@ current_shoulder_angle = 90
 current_elbow_angle = 90
 
 # paper limits
-X_MIN, X_MAX = 5.0, 27.0
+X_MIN, X_MAX = 3.0, 27.0
 Y_MIN, Y_MAX = -15.5, 15.0
-
-# CALIBRATION VALUES - UPDATE THESE AFTER RUNNING CALIBRATION
-SHOULDER_RAW_MIN =  1463  # Raw ADC reading when shoulder is at 0 degrees
-SHOULDER_RAW_MAX = 223 # Raw ADC reading when shoulder is at 180 degrees
-
-# Elbow Feedback (B) Calibration
-ELBOW_RAW_MIN = 1321     # Raw ADC reading when elbow is at 0 degrees
-ELBOW_RAW_MAX = 477    # Raw ADC reading when elbow is at 180 degrees
 
 
 def read_pot(adc):   # getting rid of noise by reading the pot values of the average of the samples
@@ -88,6 +76,47 @@ def translate(angle: float) -> int:
     return duty_cycle_value
 
 
+########################## CALIBRATION ###############################
+def calibrate_feedback_range(servo):
+    print("\nCALIBRATING FEEDBACK RANGE...")
+    
+    # Move to 0
+    servo.duty_u16(translate(0))
+    time.sleep(1)
+    min_val = external_ADC.read(4, 1)
+    print("0° Feedback:", min_val)
+
+    # Move to 180
+    servo.duty_u16(translate(180))
+    time.sleep(1)
+    max_val = external_ADC.read(4, 1)
+    print("180° Feedback:", max_val)
+
+    return min_val, max_val
+
+
+
+def feedback_to_angle(raw_value, min_val=500, max_val=25000):
+    """
+    Convert ADC feedback value into an angle (0–180°)
+    min_val = ADC reading at 0°
+    max_val = ADC reading at 180°
+    """
+    raw_value = max(min_val, min(max_val, raw_value))
+    angle = (raw_value - min_val) * 180 / (max_val - min_val)
+    return angle
+
+
+min_fb, max_fb = calibrate_feedback_range(shoulder)
+print("USE THESE VALUES:")
+print("MIN:", min_fb)
+print("MAX:", max_fb)
+
+
+########################### END OF CALIBRATION ANGLES #########################
+
+
+
 def inverse_kinematics(x, y):
     """
     A = shoulder (at origin or offset position)
@@ -105,7 +134,7 @@ def inverse_kinematics(x, y):
     min_reach = abs(La - Lb)
 
     theta_S_offset = math.radians(150)  # adjust Shoulder servo mounding and convert to radians
-    theta_E_offset = math.radians(20)  # adjust elbow servo mounting and convert to raidans
+    theta_E_offset = math.radians(30)  # adjust elbow servo mounting and convert to raidans
     
     angle_AC = math.atan2(Cy, Cx)  # angle from horizontal x axis
     AC = math.sqrt(Cy**2 + Cx**2) # distance from shoulder to target
@@ -126,12 +155,14 @@ def inverse_kinematics(x, y):
     
     theta_S = theta_S_offset + theta_AB # final shoulder angle including the offset
     theta_S_deg = math.degrees(theta_S) # convert to degrees
+    theta_S_deg = max(0, min(180, theta_S_deg)) # put in the range between [0, 180]
+
 
     theta_E = angle_ABC - theta_E_offset # final elbow angle including offset
     theta_E_deg = math.degrees(theta_E) # convert to degrees
+    theta_E_deg = max(0, min(180, theta_E_deg)) # keep the range in between [0, 180]
     
     return (theta_S_deg, theta_E_deg)
-
 
 def move_to(target_x, target_y):
     angles = inverse_kinematics(target_x, target_y)
@@ -145,11 +176,10 @@ def move_to(target_x, target_y):
     shoulder.duty_u16(translate(shoulder_ang))
     elbow.duty_u16(translate(elbow_ang))
 
-    print(f"Commanded: S={shoulder_ang:.1f}°, E={elbow_ang:.1f}°")
+    print(f"SHOULDER ANGLE: {shoulder_ang}, ELBOW ANGLE: {elbow_ang}")
 
-    time.sleep(0.02)
-    return True, shoulder_ang, elbow_ang
-
+    time.sleep(0.5)
+    return True
 
 def wrist_up():
     """Lift pen off paper"""
@@ -160,19 +190,7 @@ def wrist_up():
 def wrist_down():
     """Lower pen to paper"""
     wrist.duty_u16(translate(30))
-    time.sleep(0.02)
-
-def map_adc_to_angle(raw_value: int, raw_min: int, raw_max: int) -> float:
-    """
-    Converts a raw 12-bit ADC reading (0 to ~2047) from the ADS1015
-    into a corresponding angle in degrees (0 to 180).
-    """
-    clamped_value = max(raw_min, min(raw_max, raw_value))
-    raw_span = raw_max - raw_min
-    normalized_pos = (clamped_value - raw_min) / raw_span
-    angle = normalized_pos * 180.0
-
-    return angle
+    time.sleep(0.5)
 
 
 def main():
@@ -182,29 +200,28 @@ def main():
     time.sleep(1)
 
     while True:
-
-
         # Read potentiometer values
         pot_x_value = read_pot(pot_x)
         pot_y_value = read_pot(pot_y)
 
-        # Map to workspace coordinates
+        # Map to coordinate space
         target_x = map_pot_to_coordinate(pot_x_value, X_MIN, X_MAX)
         target_y = map_pot_to_coordinate(pot_y_value, Y_MIN, Y_MAX)
 
-        # Move to position (inverse kinematics inside move_to)
+        valueA = external_ADC.read(1, ADS1015_A_FB)
+	    valueB = external_ADC.read(1, ADS1015_B_FB)
+
+        print(f"Target: ({target_x:.1f}, {target_y:.1f})")
+
+        # Let move_to handle IK + motion
         success = move_to(target_x, target_y)
 
         if success:
-            # Optional: read ADC feedback for shoulder/elbow
-            valueA = external_ADC.read(4, ADS1015_A_FB)
-            valueB = external_ADC.read(4, ADS1015_B_FB)
+            raw_value = external_ADC.read(4, 1)
+            print(raw_value)
 
-            valueA = map_adc_to_angle(valueA, SHOULDER_RAW_MIN, SHOULDER_RAW_MAX)
-            valueB = map_adc_to_angle(valueB, ELBOW_RAW_MIN, ELBOW_RAW_MAX)
-
-            print(f"ADC Feedback: RAW shoulder: {valueA} Raw Elbow: {valueB}")                      
-            time.sleep(0.01)
+        
+	
 
 
 if __name__ == "__main__":
