@@ -3,22 +3,17 @@ from machine import Pin, PWM, ADC, I2C
 import time, math
 from ads1x15 import ADS1015
 
-
-
-ADS1015_PWM = 2     # port 2 has (low-pass filtered) PWM signal
-ADS1015_A_FB = 0
-ADS1015_B_FB = 1
-
 i2c = I2C(1, sda = Pin(14), scl = Pin(15))
-
 #setting a PWM signal and assigning it a frequency
-pwm = PWM(Pin(0), freq=50, duty_u16=8192)
-pwm.duty_u16(32768)
-pot_x = ADC(Pin(27))
-pot_y = ADC(Pin(26))
+pot_x = ADC(Pin(26))
+pot_y = ADC(Pin(27))
 external_ADC = ADS1015(i2c, 0x48, 1 )
 
 ANGLE_OFFSET = 5 # create calibration table lookup to figure out the offset
+SMOOTHING = 0.1
+
+current_shoulder = 0
+current_elbow = 0
 
 #setting PWM value for the servos
 shoulder = PWM(Pin(0), freq=50)
@@ -29,38 +24,25 @@ wrist = PWM(Pin(2), freq=50)
 len_shol_elbow = 17.0  # La
 len_elbow_wrist = 14.0  # Lb
 
-# Current servo angles
-current_shoulder_angle = 90
-current_elbow_angle = 90
-
 # paper limits
 X_MIN, X_MAX = 0.0, 29.0
 Y_MIN, Y_MAX = -15.5, 15.5
 
 
 def read_pot(adc):   # getting rid of noise by reading the pot values of the average of the samples
-    sample = 1
+    sample = 5
     total = 0
     for i in range(sample):
         total += adc.read_u16()
         time.sleep_ms(1)
     return total // sample
-    
+
 
 def map_pot_to_coordinate(pot_value, min_value, max_value): # map potentiometer 0-65535 to coordinate range
     return min_value + (pot_value / 65535.0) * (max_value - min_value)
 
-def map_clamped(value, in_min, in_max, out_min, out_max):
-    if value < in_min:
-        value = in_min
-    if value > in_max:
-        value = in_max
-    
-    # convert to output range
-    return out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min)
 
-
-def translate(angle: float) -> int:
+def translate(angle: float):
     """
     Converts an angle in degrees to the corresponding input
     for the duty_u16 method of the servo class.
@@ -68,7 +50,6 @@ def translate(angle: float) -> int:
     """
     #apply the offset to the input angle
     adjusted_angle = angle + ANGLE_OFFSET
-
     #makes sure that the servo motors stays within bounds
     if adjusted_angle < 0:
         adjusted_angle = 0
@@ -98,7 +79,7 @@ def inverse_kinematics(x, y):
     C = target position
     """
     
-    #Ax, Ay = 0.0, 0.0 # shoulder position, may need to change
+    Ax, Ay = 0.0, 0.0 # shoulder position, may need to change
     Cx, Cy = x, y # target position
     
     La = len_shol_elbow
@@ -127,7 +108,7 @@ def inverse_kinematics(x, y):
 
     theta_AB = angle_AC - angle_BAC # shoulder angle from horizontal line to the shoulder
     
-    theta_S = theta_S_offset + theta_AB # final shoulder angle including the offs
+    theta_S = theta_S_offset + theta_AB # final shoulder angle including the offset
     theta_S_deg = math.degrees(theta_S) # convert to degrees
     theta_S_deg = max(0, min(180, theta_S_deg)) # put in the range between [0, 180]
 
@@ -138,30 +119,25 @@ def inverse_kinematics(x, y):
     
     return (theta_S_deg, theta_E_deg)
 
-def move_to(target_shoulder, targt_elbow):
-    shoulder.duty_u16(translate(target_shoulder))
-    elbow.duty_u16(translate(targt_elbow))
+def move_to(target_shoulder, targt_elbow): # smoothly approach a new angle
+    global current_shoulder, current_elbow
+
+    current_shoulder += (target_shoulder - current_shoulder) * SMOOTHING
+    current_elbow += (targt_elbow - current_elbow) * SMOOTHING
+
+    shoulder.duty_u16(translate(current_shoulder))
+    elbow.duty_u16(translate(current_elbow))
+
     time.sleep(0.01)
-    """global current_shoulder_angle, current_elbow_angle
- 
-    if current_shoulder_angle < target_shoulder:
-        shoulder_range = range(int(current_shoulder_angle), int(target_shoulder) +1)
-    else:
-        shoulder_range = range(int(current_shoulder_angle), int(target_shoulder), -1)
 
-    if current_elbow_angle < targt_elbow:
-        elbow_range = range(int(current_elbow_angle), int(targt_elbow) + 1)
-    else:
-        elbow_range = range(int(current_elbow_angle), int(targt_elbow), -1)
 
-    for s,e in zip(shoulder_range, elbow_range):
-        shoulder.duty_u16(translate(s))
-        elbow.duty_u16(translate(e))
-        time.sleep(0.01)
+    """
+    AFTER CALLIBRATION add the following lines
+    actual = feedback_to_angle(external_ADC.read(4,1))
+    shoulder_error = current_shoulder - actual
+    correction = error * 0.8
 
-    current_shoulder_angle = target_shoulder
-    current_elbow_angle = targt_elbow"""
-
+    """
 
 def wrist_up():
     """Lift pen off paper"""
@@ -174,14 +150,12 @@ def wrist_down():
     wrist.duty_u16(translate(30))
     time.sleep(0.5)
 
-offset_offset = 45
+
 def main():
     print("Etch-A-Sketch Starting...")
     print(f"Workspace: X({X_MIN}, {X_MAX}), Y({Y_MIN}, {Y_MAX})")
-    move_to(0+ offset_offset,0)
-    time.sleep(0.05)
-    #move_to(45,0)
-    #time.sleep(0.5)
+    
+    time.sleep(1)
     while True:
         # Read potentiometer values
         pot_x_value = read_pot(pot_x) # pot shoulder in PWM singal 
@@ -189,11 +163,9 @@ def main():
     
 
         # Map to coordinate space
-        #target_x = map_pot_to_coordinate(pot_x_value, X_MIN, X_MAX) # gives on paper how much is 65000 X axis
-        #target_y = map_pot_to_coordinate(pot_y_value, Y_MIN, Y_MAX)# gives on paper how much is 65000 Y axis
-    
-        target_x = map_clamped(pot_x_value , X_MIN, X_MAX, X_MIN, X_MAX)
-        target_y = map_clamped(pot_y_value, Y_MIN, Y_MAX, Y_MIN, Y_MAX)
+        target_x = map_pot_to_coordinate(pot_x_value, X_MIN, X_MAX) # gives on paper how much is 65000 X axis
+        target_y = map_pot_to_coordinate(pot_y_value, Y_MIN, Y_MAX)# gives on paper how much is 65000 Y axis
+
         # Calculate inverse kinematics
         angles = inverse_kinematics(target_x, target_y)
 
@@ -208,16 +180,40 @@ def main():
         else: 
             print(f"Target ({target_x:.1f}, {target_y:.1f}) is unreachable")
 
-        valueA = external_ADC.read(1, ADS1015_A_FB)
-        valueB = external_ADC.read(1, ADS1015_B_FB)
-        print("A: ", valueA, ", B: ", valueB)
-        #time.sleep(0.1)
-
-
-
-
         #time.sleep(0.1)  # 20Hz update rate
 
 
 if __name__ == "__main__":
     main()
+
+
+"""
+CALLIBRATION STEPS
+
+1. read raw value:
+def feedback_to_anble(raw value, min_val, max_val)
+    index the raw value between min and max, make sure it doesn't go off the bounds
+    angle = adjust to return the angle
+    
+def calibrate_feedback_range(servo):
+    move to angle 0,
+    recurd to min val
+
+    move to angle 180
+    record max val
+
+    return min, max val
+
+def calibrate_offset(servo, desired_angle = 90):
+    move servo to desired anble
+
+    raw = external adc read
+    
+    actual_angle = feedback_to_angle(raw)
+
+    error = desired_angle - actual_angle
+    ANGLE_OFFSET += error
+
+    return ANGLE_OFFSET
+
+"""
